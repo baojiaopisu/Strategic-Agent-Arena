@@ -1,0 +1,39 @@
+[project]
+name = "strategic-agent-arena"
+version = "0.1.0"
+description = "Low-compute strategy game environments for studying decision-making agents."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "networkx>=3.0",
+  "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.27",
+  "pytest>=8.0",
+  "ruff>=0.6",
+]
+web = [
+  "fastapi>=0.110",
+  "uvicorn>=0.29",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["strategic_agent_arena*"]
+
+[tool.setuptools.package-data]
+"strategic_agent_arena.web" = ["static/*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
