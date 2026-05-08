@@ -24,14 +24,17 @@ def enemy(player: int) -> int:
     return 1 - player
 
 
-def initiative_order(round_index: int) -> tuple[int, int]:
-    return (0, 1) if round_index % 2 == 1 else (1, 0)
+def initiative_order(round_index: int, first_player: int = 0) -> tuple[int, int]:
+    if first_player not in PLAYER_IDS:
+        raise ValueError(f"invalid first player: {first_player}")
+    first_order = (first_player, enemy(first_player))
+    return first_order if round_index % 2 == 1 else (first_order[1], first_order[0])
 
 
-def current_player_for_turn(round_index: int, turn_index: int) -> int:
+def current_player_for_turn(round_index: int, turn_index: int, first_player: int = 0) -> int:
     if turn_index not in (0, 1):
         raise ValueError(f"invalid turn index: {turn_index}")
-    return initiative_order(round_index)[turn_index]
+    return initiative_order(round_index, first_player)[turn_index]
 
 
 def compute_supply(graph: nx.Graph, owners: np.ndarray, bases: tuple[int, int]) -> np.ndarray:

@@ -8,17 +8,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from strategic_agent_arena.agents import GreedyExpansionAgent, RandomAgent
+from strategic_agent_arena.agents import available_agent_specs, make_agent
 from strategic_agent_arena.envs.supply_graph_war.mapgen import available_maps
 from strategic_agent_arena.evaluation import run_tournament
 
 
 def main() -> None:
+    agents = {spec.name: make_agent(spec.id) for spec in available_agent_specs()}
     result = run_tournament(
-        {
-            "Random": RandomAgent(),
-            "GreedyExpansion": GreedyExpansionAgent(),
-        },
+        agents,
         seeds=[1, 2, 3],
         map_ids=[map_info.id for map_info in available_maps()],
         max_rounds=80,

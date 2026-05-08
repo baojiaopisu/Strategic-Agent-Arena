@@ -51,7 +51,10 @@ class SupplyGraphWarEnv:
         self,
         seed: int | None = None,
         map_id: str = DEFAULT_MAP_ID,
+        first_player: int = 0,
     ) -> "SupplyGraphWarEnv":
+        if first_player not in (0, 1):
+            raise ValueError(f"invalid first player: {first_player}")
         self.rng = np.random.default_rng(seed)
         map_spec = generate_map(map_id=map_id)
         supplied = compute_supply(map_spec.graph, map_spec.owners, map_spec.bases)
@@ -65,6 +68,7 @@ class SupplyGraphWarEnv:
             supplied=supplied,
             round_index=1,
             turn_index=0,
+            first_player=first_player,
         )
         self._terminal = False
         self._winner = None
@@ -80,7 +84,7 @@ class SupplyGraphWarEnv:
     @property
     def current_player(self) -> int:
         state = self._require_state()
-        return current_player_for_turn(state.round_index, state.turn_index)
+        return current_player_for_turn(state.round_index, state.turn_index, state.first_player)
 
     @property
     def round_index(self) -> int:
@@ -173,7 +177,7 @@ class SupplyGraphWarEnv:
         state = self._require_state()
         lines = [
             f"Round {state.round_index} | current_player={self.current_player} "
-            f"| pending_production={self._production_pending}",
+            f"| first_player={state.first_player} | pending_production={self._production_pending}",
             f"Bases: P0={state.bases[0]} P1={state.bases[1]}",
         ]
 

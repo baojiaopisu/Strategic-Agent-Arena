@@ -24,6 +24,7 @@ class SupplyGraphWarState:
     supplied: np.ndarray
     round_index: int = 1
     turn_index: int = 0
+    first_player: int = 0
 
     @property
     def n_nodes(self) -> int:
@@ -40,5 +41,5 @@ class SupplyGraphWarState:
             supplied=self.supplied.copy(),
             round_index=self.round_index,
             turn_index=self.turn_index,
+            first_player=self.first_player,
         )
-

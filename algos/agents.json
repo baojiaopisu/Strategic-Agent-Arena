@@ -1,0 +1,14 @@
+{
+  "agents": [
+    {
+      "id": "cpp_pass_example",
+      "name": "C++ Pass Example",
+      "kind": "external_process",
+      "enabled": false,
+      "command": ["algos/cpp/build/cpp_pass_agent"],
+      "protocol": "saa-jsonl-v1",
+      "timeout_ms": 200,
+      "startup_timeout_ms": 1000
+    }
+  ]
+}

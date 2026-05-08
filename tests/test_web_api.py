@@ -37,8 +37,10 @@ def test_create_session_returns_graph_state_and_agents() -> None:
     assert body["session_id"]
     assert body["config"]["map_id"] == "twin_pass"
     assert body["config"]["map_name"] == "Twin Pass"
+    assert body["config"]["first_player"] == 0
     assert body["status"]["round_index"] == 1
     assert body["status"]["current_player"] == 0
+    assert body["status"]["first_player"] == 0
     assert len(body["graph"]["nodes"]) == 21
     assert body["graph"]["edges"]
     assert body["legal_actions"]
@@ -52,8 +54,23 @@ def test_index_uses_versioned_static_assets() -> None:
 
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
-    assert "/static/app.js?v=20260508-fixed-maps" in response.text
-    assert "/static/styles.css?v=20260508-fixed-maps" in response.text
+    assert "/static/app.js?v=20260508-balanced-initiative" in response.text
+    assert "/static/styles.css?v=20260508-balanced-initiative" in response.text
+
+
+def test_create_session_can_start_with_player_one() -> None:
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/sessions",
+        json={"seed": 10, "map_id": "twin_pass", "first_player": 1},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["config"]["first_player"] == 1
+    assert body["status"]["first_player"] == 1
+    assert body["status"]["current_player"] == 1
 
 
 def test_same_seed_produces_deterministic_initial_state_and_layout() -> None:
@@ -104,6 +121,74 @@ def test_round_advances_to_next_round_or_terminal() -> None:
     body = response.json()
     assert len(body["action_log"]) >= 1
     assert body["status"]["terminal"] or body["status"]["round_index"] == 2
+
+
+def test_lab_batch_runs_headless_games_and_returns_statistics() -> None:
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/lab/batch",
+        json={
+            "agent_a": "random",
+            "agent_b": "greedy_expansion",
+            "map_ids": ["twin_pass"],
+            "seed_start": 1,
+            "games_per_map": 2,
+            "max_rounds": 20,
+            "side_swap": True,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["config"]["initiative_mode"] == "balanced"
+    assert body["config"]["total_games"] == 8
+    assert body["summary"]["games"] == 8
+    assert sum(body["summary"]["wins"].values()) == 8
+    assert body["by_map"][0]["map_id"] == "twin_pass"
+    assert body["by_map"][0]["games"] == 8
+    assert len(body["side_breakdown"]) == 4
+    assert len(body["games"]) == 8
+    assert {game["agent_a_player"] for game in body["games"]} == {0, 1}
+    assert {game["first_player"] for game in body["games"]} == {0, 1}
+    assert {row["first_rate"] for row in body["side_breakdown"]} == {0.5}
+
+
+def test_lab_batch_is_deterministic_for_same_request() -> None:
+    client = TestClient(create_app())
+    payload = {
+        "agent_a": "random",
+        "agent_b": "greedy_expansion",
+        "map_ids": ["island_ring", "trident_front"],
+        "seed_start": 5,
+        "games_per_map": 2,
+        "max_rounds": 20,
+        "side_swap": False,
+    }
+
+    first = client.post("/api/lab/batch", json=payload).json()
+    second = client.post("/api/lab/batch", json=payload).json()
+
+    assert first["summary"] == second["summary"]
+    assert first["by_map"] == second["by_map"]
+    assert first["side_breakdown"] == second["side_breakdown"]
+    assert first["games"] == second["games"]
+
+
+def test_lab_batch_rejects_too_many_games() -> None:
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/lab/batch",
+        json={
+            "map_ids": ["twin_pass", "island_ring", "trident_front"],
+            "games_per_map": 500,
+            "side_swap": True,
+        },
+    )
+
+    assert response.status_code == 400
+    assert "batch too large" in response.json()["detail"]
 
 
 def test_invalid_ids_return_clear_http_errors() -> None:

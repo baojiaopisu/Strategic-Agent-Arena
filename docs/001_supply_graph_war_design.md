@@ -55,8 +55,11 @@ Each round:
 
 Initiative order:
 
-- Odd rounds: player 0 then player 1
-- Even rounds: player 1 then player 0
+- Odd rounds: configured first player, then the opponent
+- Even rounds: opponent, then the configured first player
+
+The default first player is player 0. Evaluation tools can run balanced batches
+that test both player 0 first and player 1 first to measure first-move bias.
 
 In the environment implementation, production is stored as a pending start-of-round step. This preserves the literal reset state while ensuring `legal_actions()` previews the same actionable state that `step()` will use.
 

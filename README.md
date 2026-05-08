@@ -13,6 +13,7 @@ This repo currently contains a runnable MVP:
 - `RandomAgent` and `GreedyExpansionAgent`
 - Match, side-swapped match, and tournament runners
 - Local browser UI for watching bot-vs-bot games
+- External-process agent contract for isolated C++ algorithms
 - Tests for core rules, actions, fixed map symmetry, determinism, and the web API
 
 ## Why This Is an AI Playground
@@ -43,6 +44,12 @@ Run a single match:
 
 ```bash
 python3 scripts/run_match.py
+```
+
+Run a match with explicit registered agents:
+
+```bash
+python3 scripts/run_match.py --agent0 random --agent1 greedy_expansion
 ```
 
 Run a small tournament:
@@ -82,6 +89,17 @@ Current controls:
 
 The backend is a small FastAPI app wrapping live in-memory `SupplyGraphWarEnv` sessions. There is no database or saved replay format yet.
 
+## External Algorithms
+
+C++ algorithms can be integrated as isolated executables through the `saa-jsonl-v1`
+JSON Lines contract. Python remains the authoritative referee: it sends
+observations and legal actions, the algorithm returns a legal action index, and
+Python validates/applies the move.
+
+External agents are registered in `algos/agents.json`. See
+`docs/002_agent_contracts.md` for the protocol and `algos/cpp/` for a minimal
+C++ example.
+
 ## Current Limitations
 
 - MCTS or search agents
@@ -98,9 +116,9 @@ At the start of each round, supplied nodes produce units. A player-owned node is
 
 Each round alternates initiative:
 
-- Round 1: Player 0, then Player 1
-- Round 2: Player 1, then Player 0
-- Round 3: Player 0, then Player 1
+- Round 1: configured first player, then the opponent
+- Round 2: the opponent, then the configured first player
+- Round 3: configured first player, then the opponent
 
 Actions:
 
@@ -116,9 +134,10 @@ A player wins immediately by capturing the enemy base. Otherwise, the game ends 
 ```text
 strategic_agent_arena/
   envs/supply_graph_war/   # simulator, state, actions, rules, fixed maps
-  agents/                  # baseline agent interface and bots
+  agents/                  # baseline bots, registry, external process adapter
   evaluation/              # match and tournament runners
   web/                     # FastAPI app and static browser UI
+algos/                     # external C++ agents and future Python/RL agents
 scripts/                   # command-line entry points
 tests/                     # simulator and web API tests
 docs/                      # project vision and game design notes

@@ -5,12 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Strategic Agent Arena</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="/static/styles.css?v=20260508-fixed-maps" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260508-balanced-initiative" />
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <div>
+        <div class="title-block">
+          <span class="eyebrow">Strategic Agent Arena</span>
           <h1>Supply Graph War</h1>
           <div id="statusLine" class="status-line">Loading</div>
         </div>
@@ -41,6 +42,13 @@
             <label>
               Max rounds
               <input id="roundsInput" type="number" min="1" max="500" value="80" />
+            </label>
+            <label>
+              First player
+              <select id="firstPlayerInput">
+                <option value="0" selected>P0</option>
+                <option value="1">P1</option>
+              </select>
             </label>
           </section>
 
@@ -91,6 +99,19 @@
         </aside>
 
         <section class="board-panel">
+          <div class="board-header" aria-label="map legend">
+            <div class="board-title">
+              <span class="panel-kicker">Tactical Map</span>
+              <strong id="boardMapName">Loading</strong>
+            </div>
+            <div class="legend-strip">
+              <span><i class="legend-swatch player-zero-swatch"></i>P0</span>
+              <span><i class="legend-swatch player-one-swatch"></i>P1</span>
+              <span><i class="legend-swatch neutral-swatch"></i>Neutral</span>
+              <span><i class="legend-ring"></i>Base</span>
+              <span><i class="legend-warning"></i>Unsupplied</span>
+            </div>
+          </div>
           <svg id="graphSvg" role="img" aria-label="Supply Graph War map"></svg>
         </section>
 
@@ -111,8 +132,151 @@
           </section>
         </aside>
       </main>
+
+      <section class="lab-panel" aria-labelledby="labTitle">
+        <div class="lab-heading">
+          <div>
+            <span class="eyebrow">Agent Evaluation Lab</span>
+            <h2 id="labTitle">Headless Batch Analysis</h2>
+          </div>
+          <div id="labStatus" class="lab-status">Ready</div>
+        </div>
+
+        <div class="lab-grid">
+          <div class="lab-controls">
+            <label>
+              Agent A
+              <select id="labAgentAInput"></select>
+            </label>
+            <label>
+              Agent B
+              <select id="labAgentBInput"></select>
+            </label>
+            <label>
+              Maps
+              <select id="labMapInput" multiple size="3"></select>
+            </label>
+            <div class="lab-input-grid">
+              <label>
+                Seed start
+                <input id="labSeedStartInput" type="number" value="1" />
+              </label>
+              <label>
+                Games / map
+                <input id="labGamesInput" type="number" min="1" max="500" value="50" />
+              </label>
+              <label>
+                Max rounds
+                <input id="labRoundsInput" type="number" min="1" max="500" value="80" />
+              </label>
+              <label class="checkbox-label">
+                <input id="labSideSwapInput" type="checkbox" checked />
+                Side swap
+              </label>
+              <label>
+                Initiative
+                <select id="labInitiativeInput">
+                  <option value="balanced" selected>Balanced</option>
+                  <option value="p0">P0 first</option>
+                  <option value="p1">P1 first</option>
+                </select>
+              </label>
+            </div>
+            <button id="runBatchButton" class="primary-button" type="button">Run Batch</button>
+          </div>
+
+          <div class="lab-results">
+            <div class="analysis-cards" aria-label="batch analysis summary">
+              <div class="analysis-card">
+                <span>Games</span>
+                <strong id="labGamesMetric">0</strong>
+              </div>
+              <div class="analysis-card">
+                <span>Win Rate A / B</span>
+                <strong id="labWinRateMetric">0% / 0%</strong>
+              </div>
+              <div class="analysis-card">
+                <span>Avg Score Delta</span>
+                <strong id="labScoreDeltaMetric">0</strong>
+              </div>
+              <div class="analysis-card">
+                <span>Avg Rounds</span>
+                <strong id="labRoundsMetric">0</strong>
+              </div>
+              <div class="analysis-card">
+                <span>Base Captures</span>
+                <strong id="labCaptureMetric">0%</strong>
+              </div>
+              <div class="analysis-card">
+                <span>Runtime</span>
+                <strong id="labRuntimeMetric">0 ms</strong>
+              </div>
+            </div>
+
+            <div class="win-bars" aria-label="win rate comparison">
+              <div class="win-bar-row">
+                <span id="labAgentALabel">Agent A</span>
+                <div class="bar-track"><i id="labAgentABar"></i></div>
+                <strong id="labAgentAWinText">0%</strong>
+              </div>
+              <div class="win-bar-row">
+                <span id="labAgentBLabel">Agent B</span>
+                <div class="bar-track"><i id="labAgentBBar"></i></div>
+                <strong id="labAgentBWinText">0%</strong>
+              </div>
+              <div class="win-bar-row draw-row">
+                <span>Draws</span>
+                <div class="bar-track"><i id="labDrawBar"></i></div>
+                <strong id="labDrawText">0%</strong>
+              </div>
+            </div>
+
+            <div class="table-grid">
+              <div>
+                <h3>Map Breakdown</h3>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Map</th>
+                        <th>Games</th>
+                        <th>A Win</th>
+                        <th>B Win</th>
+                        <th>Delta</th>
+                      </tr>
+                    </thead>
+                    <tbody id="labMapTable">
+                      <tr><td colspan="6">No batch run yet</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div>
+                <h3>Side Breakdown</h3>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Agent</th>
+                        <th>Side</th>
+                        <th>Games</th>
+                        <th>First</th>
+                        <th>Win</th>
+                        <th>Avg Score</th>
+                      </tr>
+                    </thead>
+                    <tbody id="labSideTable">
+                      <tr><td colspan="5">No batch run yet</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
 
-    <script src="/static/app.js?v=20260508-fixed-maps"></script>
+    <script src="/static/app.js?v=20260508-balanced-initiative"></script>
   </body>
 </html>

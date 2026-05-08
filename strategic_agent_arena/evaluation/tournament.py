@@ -14,6 +14,7 @@ def run_tournament(
     seeds: Sequence[int],
     map_ids: Sequence[str] = (DEFAULT_MAP_ID,),
     max_rounds: int = 80,
+    first_player: int = 0,
 ) -> dict:
     """Run a small side-swapped round robin tournament."""
 
@@ -40,6 +41,7 @@ def run_tournament(
                         seed=seed,
                         map_id=map_id,
                         max_rounds=max_rounds,
+                        first_player=first_player,
                     )
                     _record_game(records, name_a, name_b, pair["agent_a_as_player_0"].winner, a_player=0)
                     _record_game(records, name_a, name_b, pair["agent_a_as_player_1"].winner, a_player=1)

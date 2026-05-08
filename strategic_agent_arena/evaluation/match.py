@@ -35,22 +35,33 @@ def play_match(
     seed: int,
     map_id: str = DEFAULT_MAP_ID,
     max_rounds: int = 80,
+    first_player: int = 0,
 ) -> MatchResult:
     """Play one match with agent_a as player 0 and agent_b as player 1."""
 
     env = SupplyGraphWarEnv(max_rounds=max_rounds).reset(
         seed=seed,
         map_id=map_id,
+        first_player=first_player,
     )
     agents = (agent_a, agent_b)
     action_log: list[dict[str, int | str]] = []
 
-    while not env.is_terminal():
-        player = env.current_player
-        action = agents[player].select_action(env, player)
-        round_index = env.round_index
-        env.step(action)
-        action_log.append({"round": round_index, "player": player, "action": str(action)})
+    for player, agent in enumerate(agents):
+        agent.on_game_start(env, player)
+
+    try:
+        while not env.is_terminal():
+            player = env.current_player
+            action = agents[player].select_action(env, player)
+            round_index = env.round_index
+            env.step(action)
+            action_log.append({"round": round_index, "player": player, "action": str(action)})
+    finally:
+        result_summary = {"winner": env.winner(), "seed": seed, "map_id": env.map_id}
+        for player, agent in enumerate(agents):
+            agent.on_game_end(env, player, result_summary)
+            agent.close()
 
     state = env.state
     assert state is not None
@@ -83,6 +94,7 @@ def side_swapped_match(
     seed: int,
     map_id: str = DEFAULT_MAP_ID,
     max_rounds: int = 80,
+    first_player: int = 0,
 ) -> dict[str, MatchResult]:
     """Run two games with the same map setting and swapped sides."""
 
@@ -93,6 +105,7 @@ def side_swapped_match(
             seed=seed,
             map_id=map_id,
             max_rounds=max_rounds,
+            first_player=first_player,
         ),
         "agent_a_as_player_1": play_match(
             agent_b,
@@ -100,5 +113,6 @@ def side_swapped_match(
             seed=seed,
             map_id=map_id,
             max_rounds=max_rounds,
+            first_player=first_player,
         ),
     }
