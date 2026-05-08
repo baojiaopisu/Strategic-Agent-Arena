@@ -14,6 +14,7 @@ This repo currently contains a runnable MVP:
 - Match, side-swapped match, and tournament runners
 - Local browser UI for watching bot-vs-bot games
 - External-process agent contract for isolated C++ algorithms
+- C++ ports of the Random and Greedy Expansion baseline agents
 - Tests for core rules, actions, fixed map symmetry, determinism, and the web API
 
 ## Why This Is an AI Playground
@@ -97,8 +98,18 @@ observations and legal actions, the algorithm returns a legal action index, and
 Python validates/applies the move.
 
 External agents are registered in `algos/agents.json`. See
-`docs/002_agent_contracts.md` for the protocol and `algos/cpp/` for a minimal
-C++ example.
+`docs/002_agent_contracts.md` for the protocol and `algos/cpp/` for the C++
+baseline agents.
+
+Build the C++ agents with:
+
+```bash
+cmake -S algos/cpp -B algos/cpp/build
+cmake --build algos/cpp/build
+```
+
+The C++ entries in `algos/agents.json` are disabled by default until the
+binaries are built.
 
 ## Current Limitations
 

@@ -124,3 +124,8 @@ External agents are registered in `algos/agents.json`.
 
 Commands are executed from the repository root and are launched without a shell.
 Do not run untrusted binaries.
+
+The repository includes C++ ports of the built-in `RandomAgent` and
+`GreedyExpansionAgent` under `algos/cpp/agents/`. Build them with CMake, then
+enable their manifest entries in `algos/agents.json` when you want the scripts
+or browser UI to use them.
