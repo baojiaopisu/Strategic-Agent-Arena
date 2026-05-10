@@ -12,7 +12,7 @@ This repo currently contains a runnable MVP:
 - Three fixed, fair map-library scenarios: `twin_pass`, `island_ring`, and `trident_front`
 - Python reference `RandomAgent` and `GreedyExpansionAgent`
 - Match, side-swapped match, and tournament runners
-- Local browser UI split into play, batch analysis, and C++ development pages
+- Local React/FastAPI browser lab split into dashboard, play, batch analysis, and C++ development pages
 - External-process agent contract for isolated C++ algorithms
 - C++ ports of the Random and Greedy Expansion baseline agents
 - Tests for core rules, actions, fixed map symmetry, determinism, and the web API
@@ -67,6 +67,13 @@ python3 scripts/run_web.py
 
 Then open `http://127.0.0.1:8000`.
 
+Rebuild the React frontend after changing website source:
+
+```bash
+npm --prefix web/frontend install
+npm --prefix web/frontend run build
+```
+
 Example with a different map:
 
 ```bash
@@ -88,16 +95,17 @@ demo.
 
 Pages:
 
-- `/play`: watch one visible C++ agent match, step actions/rounds, autoplay, and inspect the graph.
-- `/analysis`: run many headless C++ agent games and compare win rates, side bias, score deltas, and map breakdowns.
-- `/develop`: edit `algos/cpp/agents/mcts_v1.cpp` in your normal editor, then watch the page auto-rebuild, show compiler/runtime logs, and run debug matches.
+- `/`: dashboard with maps, agents, and lab entry points.
+- `/play`: watch one visible agent match, step actions/rounds, autoplay, and inspect the graph.
+- `/analysis`: run many headless games and compare win rates, side bias, score deltas, and map breakdowns.
+- `/develop`: edit whitelisted C++ `.cpp`/`.hpp` files in the browser with Monaco, save/build through CMake, inspect compiler/runtime logs, and run debug matches.
 
-The backend is a small FastAPI app wrapping live in-memory `SupplyGraphWarEnv` sessions. There is no database or saved replay format yet.
+The backend is a small FastAPI app wrapping live in-memory `SupplyGraphWarEnv`
+sessions. Batch analysis jobs are also in memory for now: refreshing the server
+clears them.
 
-The next website milestone is a full local development workbench with a browser
-code editor, safe repo-scoped file writes, realtime build logs, compiler
-diagnostics, and richer debug match inspection. See
-`docs/003_web_research_lab_design.md`.
+The `/develop` page can write only to `algos/cpp/agents/*.cpp` and
+`algos/cpp/include/*.hpp`. It does not expose arbitrary shell access.
 
 ## External Algorithms
 
@@ -157,8 +165,9 @@ strategic_agent_arena/
   envs/supply_graph_war/   # simulator, state, actions, rules, fixed maps
   agents/                  # baseline bots, registry, external process adapter
   evaluation/              # match and tournament runners
-  web/                     # FastAPI app and static browser UI
+  web/                     # FastAPI app and built browser UI assets
 algos/                     # external C++ agents and future Python/RL agents
+web/frontend/              # React/TypeScript frontend source
 scripts/                   # command-line entry points
 tests/                     # simulator and web API tests
 docs/                      # project vision and game design notes

@@ -18,6 +18,7 @@ dev = [
 web = [
   "fastapi>=0.110",
   "uvicorn>=0.29",
+  "websockets>=12.0",
 ]
 
 [build-system]
@@ -28,7 +29,7 @@ build-backend = "setuptools.build_meta"
 include = ["strategic_agent_arena*"]
 
 [tool.setuptools.package-data]
-"strategic_agent_arena.web" = ["static/*"]
+"strategic_agent_arena.web" = ["static/*", "static/spa/*", "static/spa/assets/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

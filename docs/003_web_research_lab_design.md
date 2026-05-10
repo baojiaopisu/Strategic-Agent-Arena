@@ -71,19 +71,29 @@ algos/cpp/include/*.hpp
 The server should reject path traversal, absolute paths, symlinks that escape the
 repo, and writes outside the whitelist.
 
-## Frontend Direction
+## Implemented V1 Direction
 
-The current static frontend is acceptable for the MVP, but a fully functional
-research lab should move to a bundled frontend app:
+The website now uses a bundled frontend app:
 
 - Vite
 - React
 - TypeScript
 - Monaco Editor
-- xterm.js or a structured log panel for terminal-like output
+- structured log panels for build and runtime output
 
-The FastAPI app can serve the built frontend assets while keeping the Python API
-surface stable.
+Frontend source lives in `web/frontend/`. The production build is served by
+FastAPI from `strategic_agent_arena/web/static/spa/`.
+
+Build commands:
+
+```bash
+npm --prefix web/frontend install
+npm --prefix web/frontend run build
+```
+
+The current `/analysis` page supports in-memory background jobs. The current
+`/develop` page supports whitelisted C++ file editing, explicit save/build,
+live build status, runtime diagnostics, and debug matches.
 
 ## Non-Goals For The Next Step
 

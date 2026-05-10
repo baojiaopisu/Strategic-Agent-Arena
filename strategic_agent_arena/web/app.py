@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import subprocess
 import threading
 from dataclasses import asdict, dataclass, field
 from importlib.resources import files
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from time import perf_counter, time
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -41,6 +42,13 @@ CPP_DEV_AGENT_ID = "cpp_mcts_v1"
 CPP_DEV_SOURCE = REPO_ROOT / "algos" / "cpp" / "agents" / "mcts_v1.cpp"
 CPP_DEV_EXECUTABLE = REPO_ROOT / "algos" / "cpp" / "build" / "cpp_mcts_v1"
 BUILD_TIMEOUT_SECONDS = 60
+DEV_AGENT_DIR = REPO_ROOT / "algos" / "cpp" / "agents"
+DEV_INCLUDE_DIR = REPO_ROOT / "algos" / "cpp" / "include"
+DEV_MAX_FILE_BYTES = 500_000
+DEV_ALLOWED_DIRECTORIES = {
+    DEV_AGENT_DIR: {".cpp"},
+    DEV_INCLUDE_DIR: {".hpp"},
+}
 
 
 class NoCacheStaticFiles(StaticFiles):
@@ -77,6 +85,18 @@ class DevSessionCreateRequest(BaseModel):
     first_player: int = Field(default=0, ge=0, le=1)
     mcts_player: int = Field(default=0, ge=0, le=1)
     opponent_agent: str = "cpp_greedy_expansion_agent"
+
+
+class DevFileWriteRequest(BaseModel):
+    content: str = Field(max_length=DEV_MAX_FILE_BYTES)
+
+
+class BatchJobCreateRequest(BatchRunRequest):
+    pass
+
+
+class BatchCancelled(Exception):
+    """Raised when a background batch run is cancelled by the UI."""
 
 
 @dataclass(slots=True)
@@ -116,7 +136,7 @@ class DevBuildService:
 
     def status(self, *, auto_build: bool = True) -> dict[str, Any]:
         with self._lock:
-            source_mtime = _path_mtime(self.source_path)
+            source_mtime = _latest_build_input_mtime()
             should_build = (
                 auto_build
                 and source_mtime is not None
@@ -128,7 +148,7 @@ class DevBuildService:
 
     def build(self) -> dict[str, Any]:
         with self._lock:
-            self._build_locked(_path_mtime(self.source_path))
+            self._build_locked(_latest_build_input_mtime())
             return self._serialize_locked()
 
     def current_build_id(self) -> str | None:
@@ -164,7 +184,7 @@ class DevBuildService:
         self._state.build_id = _build_id(self._state.source_mtime, self._state.executable_mtime)
 
     def _serialize_locked(self) -> dict[str, Any]:
-        source_mtime = _path_mtime(self.source_path)
+        source_mtime = _latest_build_input_mtime()
         executable_mtime = _path_mtime(self.executable_path)
         stale = (
             source_mtime is not None
@@ -177,6 +197,7 @@ class DevBuildService:
                 "path": str(self.source_path.relative_to(REPO_ROOT)),
                 "exists": self.source_path.exists(),
                 "mtime": source_mtime,
+                "watched": [_dev_relative_path(path) for path in _build_input_paths()],
             },
             "executable": {
                 "path": str(self.executable_path.relative_to(REPO_ROOT)),
@@ -302,31 +323,114 @@ class SessionStore:
             self.step(session)
 
 
+@dataclass(slots=True)
+class BatchJob:
+    job_id: str
+    request: BatchJobCreateRequest
+    state: str = "queued"
+    created_at: float = field(default_factory=time)
+    started_at: float | None = None
+    finished_at: float | None = None
+    progress: dict[str, Any] = field(default_factory=dict)
+    result: dict[str, Any] | None = None
+    error: str | None = None
+    cancel_requested: bool = False
+
+
+class BatchJobStore:
+    def __init__(self) -> None:
+        self._jobs: dict[str, BatchJob] = {}
+        self._lock = threading.Lock()
+
+    def create(self, request: BatchJobCreateRequest) -> BatchJob:
+        job = BatchJob(
+            job_id=str(uuid4()),
+            request=request,
+            progress={"completed_games": 0, "total_games": _requested_game_count(request)},
+        )
+        with self._lock:
+            self._jobs[job.job_id] = job
+        thread = threading.Thread(target=self._run, args=(job.job_id,), daemon=True)
+        thread.start()
+        return job
+
+    def get(self, job_id: str) -> BatchJob:
+        with self._lock:
+            try:
+                return self._jobs[job_id]
+            except KeyError as exc:
+                raise HTTPException(status_code=404, detail="batch job not found") from exc
+
+    def cancel(self, job_id: str) -> BatchJob:
+        job = self.get(job_id)
+        with self._lock:
+            if job.state in {"queued", "running"}:
+                job.cancel_requested = True
+        return job
+
+    def _run(self, job_id: str) -> None:
+        job = self.get(job_id)
+        with self._lock:
+            job.state = "running"
+            job.started_at = time()
+        try:
+            result = _run_batch_with_progress(
+                job.request,
+                progress_callback=lambda completed, total: self._set_progress(
+                    job_id, completed, total
+                ),
+                should_cancel=lambda: self.get(job_id).cancel_requested,
+            )
+            with self._lock:
+                if job.cancel_requested:
+                    job.state = "cancelled"
+                else:
+                    job.state = "success"
+                    job.result = result
+                job.finished_at = time()
+        except BatchCancelled:
+            with self._lock:
+                job.state = "cancelled"
+                job.finished_at = time()
+        except Exception as exc:  # noqa: BLE001 - background job errors are returned to the UI.
+            with self._lock:
+                job.state = "failed"
+                job.error = str(exc)
+                job.finished_at = time()
+
+    def _set_progress(self, job_id: str, completed: int, total: int) -> None:
+        with self._lock:
+            job = self._jobs[job_id]
+            job.progress = {"completed_games": completed, "total_games": total}
+
+
 def create_app() -> FastAPI:
     static_dir = files("strategic_agent_arena.web").joinpath("static")
     store = SessionStore()
     dev_builds = DevBuildService()
+    batch_jobs = BatchJobStore()
 
     app = FastAPI(title="Strategic Agent Arena")
     app.state.sessions = store
     app.state.dev_builds = dev_builds
+    app.state.batch_jobs = batch_jobs
     app.mount("/static", NoCacheStaticFiles(directory=str(static_dir)), name="static")
 
     @app.get("/")
     def index() -> FileResponse:
-        return _static_page(static_dir, "play.html")
+        return _spa_page(static_dir)
 
     @app.get("/play")
     def play_page() -> FileResponse:
-        return _static_page(static_dir, "play.html")
+        return _spa_page(static_dir)
 
     @app.get("/analysis")
     def analysis_page() -> FileResponse:
-        return _static_page(static_dir, "analysis.html")
+        return _spa_page(static_dir)
 
     @app.get("/develop")
     def develop_page() -> FileResponse:
-        return _static_page(static_dir, "develop.html")
+        return _spa_page(static_dir)
 
     @app.get("/api/agents")
     def agents() -> dict[str, Any]:
@@ -368,9 +472,52 @@ def create_app() -> FastAPI:
         _validate_batch_request(request)
         return _run_batch(request)
 
+    @app.post("/api/lab/jobs")
+    def create_batch_job(request: BatchJobCreateRequest) -> dict[str, Any]:
+        _validate_batch_request(request)
+        return _serialize_batch_job(batch_jobs.create(request))
+
+    @app.get("/api/lab/jobs/{job_id}")
+    def get_batch_job(job_id: str) -> dict[str, Any]:
+        return _serialize_batch_job(batch_jobs.get(job_id))
+
+    @app.post("/api/lab/jobs/{job_id}/cancel")
+    def cancel_batch_job(job_id: str) -> dict[str, Any]:
+        return _serialize_batch_job(batch_jobs.cancel(job_id))
+
     @app.get("/api/dev/status")
     def dev_status() -> dict[str, Any]:
         return dev_builds.status(auto_build=True)
+
+    @app.get("/api/dev/files")
+    def dev_files() -> dict[str, Any]:
+        return {"files": _list_dev_files()}
+
+    @app.get("/api/dev/files/{file_path:path}")
+    def dev_file(file_path: str) -> dict[str, Any]:
+        path = _resolve_dev_file_path(file_path)
+        if not path.exists() or not path.is_file():
+            raise HTTPException(status_code=404, detail="file not found")
+        if path.stat().st_size > DEV_MAX_FILE_BYTES:
+            raise HTTPException(status_code=400, detail="file is too large for browser editing")
+        return {
+            "path": _dev_relative_path(path),
+            "content": _read_dev_file(path),
+            "mtime": _path_mtime(path),
+            "size": path.stat().st_size,
+        }
+
+    @app.put("/api/dev/files/{file_path:path}")
+    def write_dev_file(file_path: str, request: DevFileWriteRequest) -> dict[str, Any]:
+        path = _resolve_dev_file_path(file_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(request.content, encoding="utf-8")
+        return {
+            "path": _dev_relative_path(path),
+            "content": request.content,
+            "mtime": _path_mtime(path),
+            "size": path.stat().st_size,
+        }
 
     @app.post("/api/dev/build")
     def dev_build() -> dict[str, Any]:
@@ -383,6 +530,25 @@ def create_app() -> FastAPI:
         if not build_status["executable"]["exists"] or build_status["build"]["state"] != "success":
             raise HTTPException(status_code=400, detail="cpp_mcts_v1 is not built successfully")
         return _serialize_session(_create_dev_session(store, request, dev_builds.current_build_id()))
+
+    @app.websocket("/ws/dev")
+    async def dev_socket(websocket: WebSocket) -> None:
+        await websocket.accept()
+        last_payload = ""
+        try:
+            while True:
+                payload = {
+                    "type": "dev.status",
+                    "build": dev_builds.status(auto_build=False),
+                    "files": _list_dev_files(),
+                }
+                serialized = str(payload)
+                if serialized != last_payload:
+                    await websocket.send_json(payload)
+                    last_payload = serialized
+                await asyncio.sleep(1.0)
+        except WebSocketDisconnect:
+            return
 
     return app
 
@@ -397,10 +563,87 @@ def _static_page(static_dir: Any, filename: str) -> FileResponse:
     )
 
 
+def _spa_page(static_dir: Any) -> FileResponse:
+    spa_index = static_dir.joinpath("spa/index.html")
+    if getattr(spa_index, "is_file", lambda: False)():
+        return _static_page(static_dir, "spa/index.html")
+    raise HTTPException(
+        status_code=503,
+        detail="frontend build is missing; run `npm --prefix web/frontend run build`",
+    )
+
+
 def _path_mtime(path: Path) -> float | None:
     if not path.exists():
         return None
     return path.stat().st_mtime
+
+
+def _build_input_paths() -> list[Path]:
+    paths = [CPP_DEV_SOURCE]
+    paths.extend(sorted(DEV_INCLUDE_DIR.glob("*.hpp")))
+    return paths
+
+
+def _latest_build_input_mtime() -> float | None:
+    mtimes = [_path_mtime(path) for path in _build_input_paths()]
+    existing_mtimes = [mtime for mtime in mtimes if mtime is not None]
+    if not existing_mtimes:
+        return None
+    return max(existing_mtimes)
+
+
+def _dev_relative_path(path: Path) -> str:
+    return path.relative_to(REPO_ROOT).as_posix()
+
+
+def _list_dev_files() -> list[dict[str, Any]]:
+    files: list[dict[str, Any]] = []
+    for directory, suffixes in DEV_ALLOWED_DIRECTORIES.items():
+        for path in sorted(directory.iterdir() if directory.exists() else []):
+            if not path.is_file() or path.suffix not in suffixes:
+                continue
+            files.append(
+                {
+                    "path": _dev_relative_path(path),
+                    "name": path.name,
+                    "directory": _dev_relative_path(directory),
+                    "size": path.stat().st_size,
+                    "mtime": _path_mtime(path),
+                }
+            )
+    return files
+
+
+def _resolve_dev_file_path(raw_path: str) -> Path:
+    pure = PurePosixPath(raw_path)
+    if pure.is_absolute() or ".." in pure.parts:
+        raise HTTPException(status_code=400, detail="invalid development file path")
+    candidate = (REPO_ROOT / pure).resolve(strict=False)
+
+    for directory, suffixes in DEV_ALLOWED_DIRECTORIES.items():
+        root = directory.resolve()
+        if candidate.parent == root and candidate.suffix in suffixes:
+            if candidate.exists():
+                if candidate.is_symlink():
+                    raise HTTPException(status_code=400, detail="symlink edits are not allowed")
+                resolved = candidate.resolve(strict=True)
+                try:
+                    resolved.relative_to(root)
+                except ValueError as exc:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="development file path escapes the allowed directory",
+                    ) from exc
+            return candidate
+    raise HTTPException(status_code=400, detail="path is outside editable C++ files")
+
+
+def _read_dev_file(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail="file is not valid UTF-8") from exc
 
 
 def _build_id(source_mtime: float | None, executable_mtime: float | None) -> str | None:
@@ -529,12 +772,7 @@ def _validate_batch_request(request: BatchRunRequest) -> None:
         if agent_id not in _agent_ids():
             raise HTTPException(status_code=400, detail=f"unknown agent: {agent_id}")
 
-    total_games = (
-        len(map_ids)
-        * request.games_per_map
-        * (2 if request.side_swap else 1)
-        * len(_first_players_for_mode(request.initiative_mode))
-    )
+    total_games = _requested_game_count(request)
     if total_games > MAX_BATCH_GAMES:
         raise HTTPException(
             status_code=400,
@@ -621,8 +859,23 @@ def _agent_ids() -> set[str]:
 
 
 def _run_batch(request: BatchRunRequest) -> dict[str, Any]:
+    return _run_batch_with_progress(
+        request,
+        progress_callback=lambda _completed, _total: None,
+        should_cancel=lambda: False,
+    )
+
+
+def _run_batch_with_progress(
+    request: BatchRunRequest,
+    *,
+    progress_callback: Callable[[int, int], None],
+    should_cancel: Callable[[], bool],
+) -> dict[str, Any]:
     started = perf_counter()
     map_ids = _unique_map_ids(request.map_ids)
+    requested_games = _requested_game_count(request)
+    completed_games = 0
     total = _empty_batch_accumulator()
     by_map = {map_id: _empty_batch_accumulator() for map_id in map_ids}
     side_breakdown = {
@@ -633,6 +886,7 @@ def _run_batch(request: BatchRunRequest) -> dict[str, Any]:
     }
     games: list[dict[str, Any]] = []
     agent_pool: dict[tuple[str, int], BaseAgent] = {}
+    progress_callback(0, requested_games)
 
     try:
         for map_id in map_ids:
@@ -649,6 +903,8 @@ def _run_batch(request: BatchRunRequest) -> dict[str, Any]:
                         _batch_agent(agent_pool, player_agents[1], 1),
                     )
                     for first_player in _first_players_for_mode(request.initiative_mode):
+                        if should_cancel():
+                            raise BatchCancelled
                         raw = _play_lab_game(
                             player_agents=player_agents,
                             seed=seed,
@@ -672,6 +928,8 @@ def _run_batch(request: BatchRunRequest) -> dict[str, Any]:
                             normalized,
                             "agent_b",
                         )
+                        completed_games += 1
+                        progress_callback(completed_games, requested_games)
     finally:
         for agent in agent_pool.values():
             agent.close()
@@ -879,7 +1137,7 @@ def _finalize_batch_accumulator(accumulator: dict[str, float | int]) -> dict[str
                 "agent_a": _average(accumulator["units_a_total"], games),
                 "agent_b": _average(accumulator["units_b_total"], games),
             },
-        },
+        }
     }
 
 
@@ -926,6 +1184,15 @@ def _finalize_side_accumulator(accumulator: dict[str, float | int]) -> dict[str,
 
 def _unique_map_ids(map_ids: list[str]) -> list[str]:
     return list(dict.fromkeys(map_ids))
+
+
+def _requested_game_count(request: BatchRunRequest) -> int:
+    return (
+        len(_unique_map_ids(request.map_ids))
+        * request.games_per_map
+        * (2 if request.side_swap else 1)
+        * len(_first_players_for_mode(request.initiative_mode))
+    )
 
 
 def _agent_name(agent_id: str) -> str:
@@ -1078,6 +1345,29 @@ def _serialize_session(session: WebSession) -> dict[str, Any]:
         "agent_diagnostics": {
             str(player): _agent_diagnostics(agent)
             for player, agent in enumerate(session.agents)
+        },
+    }
+
+
+def _serialize_batch_job(job: BatchJob) -> dict[str, Any]:
+    return {
+        "job_id": job.job_id,
+        "state": job.state,
+        "created_at": job.created_at,
+        "started_at": job.started_at,
+        "finished_at": job.finished_at,
+        "progress": job.progress,
+        "error": job.error,
+        "result": job.result,
+        "config": {
+            "agent_a": job.request.agent_a,
+            "agent_b": job.request.agent_b,
+            "map_ids": _unique_map_ids(job.request.map_ids),
+            "seed_start": job.request.seed_start,
+            "games_per_map": job.request.games_per_map,
+            "max_rounds": job.request.max_rounds,
+            "side_swap": job.request.side_swap,
+            "initiative_mode": job.request.initiative_mode,
         },
     }
 

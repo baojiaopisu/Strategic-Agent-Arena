@@ -62,17 +62,16 @@ def test_pages_use_split_static_assets() -> None:
 
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
-    assert "/static/shared.js?v=20260511-split-pages" in response.text
-    assert "/static/play.js?v=20260511-split-pages" in response.text
-    assert "/static/styles.css?v=20260511-split-pages" in response.text
+    assert '<div id="root"></div>' in response.text
+    assert "/static/spa/assets/" in response.text
 
     analysis = client.get("/analysis")
     develop = client.get("/develop")
 
     assert analysis.status_code == 200
-    assert "/static/analysis.js?v=20260511-split-pages" in analysis.text
+    assert '<div id="root"></div>' in analysis.text
     assert develop.status_code == 200
-    assert "/static/develop.js?v=20260511-split-pages" in develop.text
+    assert '<div id="root"></div>' in develop.text
 
 
 def test_create_session_can_start_with_player_one() -> None:
@@ -223,6 +222,37 @@ def test_lab_batch_rejects_too_many_games() -> None:
     assert "batch too large" in response.json()["detail"]
 
 
+def test_lab_batch_job_runs_in_memory() -> None:
+    client = TestClient(create_app())
+
+    response = client.post(
+        "/api/lab/jobs",
+        json={
+            "agent_a": "random",
+            "agent_b": "greedy_expansion",
+            "map_ids": ["twin_pass"],
+            "seed_start": 1,
+            "games_per_map": 1,
+            "max_rounds": 10,
+            "side_swap": False,
+            "initiative_mode": "p0",
+        },
+    )
+
+    assert response.status_code == 200
+    job = response.json()
+    assert job["job_id"]
+    assert job["progress"]["total_games"] == 1
+
+    for _ in range(20):
+        job = client.get(f"/api/lab/jobs/{job['job_id']}").json()
+        if job["state"] in {"success", "failed", "cancelled"}:
+            break
+
+    assert job["state"] == "success"
+    assert job["result"]["summary"]["games"] == 1
+
+
 def test_dev_status_reports_build_target() -> None:
     client = TestClient(create_app())
 
@@ -232,9 +262,30 @@ def test_dev_status_reports_build_target() -> None:
     body = response.json()
     assert body["agent_id"] == "cpp_mcts_v1"
     assert body["source"]["path"] == "algos/cpp/agents/mcts_v1.cpp"
+    assert "algos/cpp/include/saa_protocol.hpp" in body["source"]["watched"]
     assert body["executable"]["path"] == "algos/cpp/build/cpp_mcts_v1"
     assert body["build"]["state"] in {"success", "failed", "not_started"}
     assert "commands" in body["build"]
+
+
+def test_dev_files_are_whitelisted() -> None:
+    client = TestClient(create_app())
+
+    listing = client.get("/api/dev/files")
+
+    assert listing.status_code == 200
+    file_paths = {file_info["path"] for file_info in listing.json()["files"]}
+    assert "algos/cpp/agents/mcts_v1.cpp" in file_paths
+    assert "algos/cpp/include/saa_protocol.hpp" in file_paths
+
+    valid = client.get("/api/dev/files/algos/cpp/agents/mcts_v1.cpp")
+    traversal = client.get("/api/dev/files/%2E%2E/pyproject.toml")
+    outside = client.put("/api/dev/files/README.md", json={"content": "bad"})
+
+    assert valid.status_code == 200
+    assert "content" in valid.json()
+    assert traversal.status_code == 400
+    assert outside.status_code == 400
 
 
 def test_dev_session_runs_cpp_mcts_against_cpp_agent() -> None:
@@ -242,6 +293,9 @@ def test_dev_session_runs_cpp_mcts_against_cpp_agent() -> None:
     agents = client.get("/api/agents").json()["agents"]
     if "cpp_greedy_expansion_agent" not in {agent["id"] for agent in agents}:
         pytest.skip("C++ greedy agent binary is not built")
+    build_status = client.get("/api/dev/status").json()
+    if build_status["build"]["state"] != "success" or not build_status["executable"]["exists"]:
+        pytest.skip("C++ MCTS development target is not built")
 
     response = client.post(
         "/api/dev/session",
