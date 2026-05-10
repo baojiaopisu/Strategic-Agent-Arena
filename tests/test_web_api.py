@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from strategic_agent_arena.web.app import create_app
@@ -11,10 +12,17 @@ def test_create_session_returns_graph_state_and_agents() -> None:
     agents_response = client.get("/api/agents")
     assert agents_response.status_code == 200
     agents_body = agents_response.json()
-    assert {agent["id"] for agent in agents_body["agents"]} == {
+    agent_ids = {agent["id"] for agent in agents_body["agents"]}
+    unavailable_ids = {agent["id"] for agent in agents_body["unavailable_agents"]}
+    assert "random" not in agent_ids
+    assert "greedy_expansion" not in agent_ids
+    assert agent_ids <= {"cpp_random_agent", "cpp_greedy_expansion_agent"}
+    assert {"cpp_random_agent", "cpp_greedy_expansion_agent"} <= agent_ids | unavailable_ids
+    assert {agent["id"] for agent in agents_body["internal_agents"]} >= {
         "random",
         "greedy_expansion",
     }
+    assert agents_body["development_agent"]["id"] == "cpp_mcts_v1"
     assert [map_info["id"] for map_info in agents_body["maps"]] == [
         "twin_pass",
         "island_ring",
@@ -47,15 +55,24 @@ def test_create_session_returns_graph_state_and_agents() -> None:
     assert body["action_log"] == []
 
 
-def test_index_uses_versioned_static_assets() -> None:
+def test_pages_use_split_static_assets() -> None:
     client = TestClient(create_app())
 
     response = client.get("/")
 
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
-    assert "/static/app.js?v=20260508-balanced-initiative" in response.text
-    assert "/static/styles.css?v=20260508-balanced-initiative" in response.text
+    assert "/static/shared.js?v=20260511-split-pages" in response.text
+    assert "/static/play.js?v=20260511-split-pages" in response.text
+    assert "/static/styles.css?v=20260511-split-pages" in response.text
+
+    analysis = client.get("/analysis")
+    develop = client.get("/develop")
+
+    assert analysis.status_code == 200
+    assert "/static/analysis.js?v=20260511-split-pages" in analysis.text
+    assert develop.status_code == 200
+    assert "/static/develop.js?v=20260511-split-pages" in develop.text
 
 
 def test_create_session_can_start_with_player_one() -> None:
@@ -106,6 +123,21 @@ def test_step_advances_one_action_and_appends_log() -> None:
     assert body["action_log"][0]["round"] == 1
     assert body["action_log"][0]["player"] == 0
     assert body["status"]["current_player"] == 1
+
+
+def test_close_session_ends_session() -> None:
+    client = TestClient(create_app())
+    session = client.post(
+        "/api/sessions",
+        json={"seed": 3, "map_id": "twin_pass", "max_rounds": 10},
+    ).json()
+
+    response = client.post(f"/api/sessions/{session['session_id']}/close")
+    missing = client.get(f"/api/sessions/{session['session_id']}")
+
+    assert response.status_code == 200
+    assert response.json()["closed"] is True
+    assert missing.status_code == 404
 
 
 def test_round_advances_to_next_round_or_terminal() -> None:
@@ -189,6 +221,48 @@ def test_lab_batch_rejects_too_many_games() -> None:
 
     assert response.status_code == 400
     assert "batch too large" in response.json()["detail"]
+
+
+def test_dev_status_reports_build_target() -> None:
+    client = TestClient(create_app())
+
+    response = client.get("/api/dev/status")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["agent_id"] == "cpp_mcts_v1"
+    assert body["source"]["path"] == "algos/cpp/agents/mcts_v1.cpp"
+    assert body["executable"]["path"] == "algos/cpp/build/cpp_mcts_v1"
+    assert body["build"]["state"] in {"success", "failed", "not_started"}
+    assert "commands" in body["build"]
+
+
+def test_dev_session_runs_cpp_mcts_against_cpp_agent() -> None:
+    client = TestClient(create_app())
+    agents = client.get("/api/agents").json()["agents"]
+    if "cpp_greedy_expansion_agent" not in {agent["id"] for agent in agents}:
+        pytest.skip("C++ greedy agent binary is not built")
+
+    response = client.post(
+        "/api/dev/session",
+        json={
+            "seed": 3,
+            "map_id": "twin_pass",
+            "max_rounds": 5,
+            "mcts_player": 0,
+            "opponent_agent": "cpp_greedy_expansion_agent",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["config"]["mode"] == "develop"
+    assert body["config"]["agents"]["0"] == "cpp_mcts_v1"
+    assert body["config"]["agents"]["1"] == "cpp_greedy_expansion_agent"
+    assert body["config"]["build_id"]
+    assert body["agent_diagnostics"]["0"]["fallbacks"] == 0
+
+    client.post(f"/api/sessions/{body['session_id']}/close")
 
 
 def test_invalid_ids_return_clear_http_errors() -> None:

@@ -138,6 +138,15 @@ class ExternalProcessAgent(BaseAgent):
         self._process = None
         self._game_active = False
 
+    def diagnostics_snapshot(self) -> dict[str, Any]:
+        """Return process diagnostics safe for API serialization."""
+
+        return {
+            **self.diagnostics,
+            "stderr_tail": self._stderr_lines[-40:],
+            "running": self._process is not None and self._process.poll() is None,
+        }
+
     def _ensure_started_for_action(self) -> bool:
         try:
             self._ensure_started()

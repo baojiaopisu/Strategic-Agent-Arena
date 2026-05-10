@@ -17,11 +17,12 @@ Current executables:
 - `cpp_pass_agent`: protocol smoke test that always passes.
 - `cpp_random_agent`: C++ port of `RandomAgent`.
 - `cpp_greedy_expansion_agent`: C++ port of `GreedyExpansionAgent`.
+- `cpp_mcts_v1`: development placeholder for the first MCTS implementation.
 
-The manifest entries in `algos/agents.json` are disabled by default so a fresh
-checkout does not expose unbuilt binaries in the UI. After building, set an
-agent's `"enabled"` field to `true` to make it available from scripts and the
-browser UI.
+The browser exposes built C++ agents only. `cpp_random_agent` and
+`cpp_greedy_expansion_agent` are normal selectable agents once their binaries
+exist. `cpp_mcts_v1` is used by the `/develop` page and remains disabled for
+normal play/analysis until it is ready.
 
 New C++ algorithms should live under `algos/cpp/agents/` and can reuse the
 header-only helper in `algos/cpp/include/saa_protocol.hpp`.

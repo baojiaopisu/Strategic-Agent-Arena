@@ -16,3 +16,6 @@ target_link_libraries(cpp_random_agent PRIVATE saa_cpp_protocol)
 
 add_executable(cpp_greedy_expansion_agent agents/greedy_expansion_agent.cpp)
 target_link_libraries(cpp_greedy_expansion_agent PRIVATE saa_cpp_protocol)
+
+add_executable(cpp_mcts_v1 agents/mcts_v1.cpp)
+target_link_libraries(cpp_mcts_v1 PRIVATE saa_cpp_protocol)

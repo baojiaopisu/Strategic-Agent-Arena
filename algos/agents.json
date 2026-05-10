@@ -14,7 +14,7 @@
       "id": "cpp_random_agent",
       "name": "C++ RandomAgent",
       "kind": "external_process",
-      "enabled": false,
+      "enabled": true,
       "command": ["algos/cpp/build/cpp_random_agent"],
       "protocol": "saa-jsonl-v1",
       "timeout_ms": 200,
@@ -24,10 +24,20 @@
       "id": "cpp_greedy_expansion_agent",
       "name": "C++ GreedyExpansionAgent",
       "kind": "external_process",
-      "enabled": false,
+      "enabled": true,
       "command": ["algos/cpp/build/cpp_greedy_expansion_agent"],
       "protocol": "saa-jsonl-v1",
       "timeout_ms": 200,
+      "startup_timeout_ms": 1000
+    },
+    {
+      "id": "cpp_mcts_v1",
+      "name": "C++ MCTS v1",
+      "kind": "external_process",
+      "enabled": false,
+      "command": ["algos/cpp/build/cpp_mcts_v1"],
+      "protocol": "saa-jsonl-v1",
+      "timeout_ms": 500,
       "startup_timeout_ms": 1000
     }
   ]

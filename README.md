@@ -10,9 +10,9 @@ This repo currently contains a runnable MVP:
 
 - Deterministic Python simulator for Supply Graph War
 - Three fixed, fair map-library scenarios: `twin_pass`, `island_ring`, and `trident_front`
-- `RandomAgent` and `GreedyExpansionAgent`
+- Python reference `RandomAgent` and `GreedyExpansionAgent`
 - Match, side-swapped match, and tournament runners
-- Local browser UI for watching bot-vs-bot games
+- Local browser UI split into play, batch analysis, and C++ development pages
 - External-process agent contract for isolated C++ algorithms
 - C++ ports of the Random and Greedy Expansion baseline agents
 - Tests for core rules, actions, fixed map symmetry, determinism, and the web API
@@ -73,22 +73,31 @@ Example with a different map:
 python3 scripts/run_match.py --map-id island_ring --seed 12
 ```
 
+Build the C++ agents for the browser UI:
+
+```bash
+cmake -S algos/cpp -B algos/cpp/build
+cmake --build algos/cpp/build
+```
+
 ## Browser UI
 
-The web UI is local-only and research-oriented. It is meant to make games visible while designing agents.
+The web UI is local-only and research-oriented. It is meant to become a real
+research lab for designing, debugging, and evaluating agents, not just a game
+demo.
 
-Current controls:
+Pages:
 
-- choose one of the fixed maps and set seed/max rounds
-- choose Player 0 and Player 1 agents
-- reset the match
-- step one action
-- step one round
-- autoplay with speed control
-- inspect scores, ownership, supply, units, legal actions, and action log
-- click a node to inspect owner, units, production, defense, supply, and base status
+- `/play`: watch one visible C++ agent match, step actions/rounds, autoplay, and inspect the graph.
+- `/analysis`: run many headless C++ agent games and compare win rates, side bias, score deltas, and map breakdowns.
+- `/develop`: edit `algos/cpp/agents/mcts_v1.cpp` in your normal editor, then watch the page auto-rebuild, show compiler/runtime logs, and run debug matches.
 
 The backend is a small FastAPI app wrapping live in-memory `SupplyGraphWarEnv` sessions. There is no database or saved replay format yet.
+
+The next website milestone is a full local development workbench with a browser
+code editor, safe repo-scoped file writes, realtime build logs, compiler
+diagnostics, and richer debug match inspection. See
+`docs/003_web_research_lab_design.md`.
 
 ## External Algorithms
 
@@ -108,12 +117,13 @@ cmake -S algos/cpp -B algos/cpp/build
 cmake --build algos/cpp/build
 ```
 
-The C++ entries in `algos/agents.json` are disabled by default until the
-binaries are built.
+The browser exposes C++ agents only. Python agents remain in the backend as
+reference baselines and tests. The `cpp_mcts_v1` manifest entry stays disabled
+for normal play/analysis while it is used by the `/develop` page.
 
 ## Current Limitations
 
-- MCTS or search agents
+- Completed MCTS/search agents
 - RL or neural policies
 - Replay visualization
 - Human-vs-bot play
@@ -158,8 +168,9 @@ docs/                      # project vision and game design notes
 
 1. `MCTSBot`
 2. `SupplyCutBot` and other graph heuristic bots
-3. Human play in the browser UI
-4. Replay export and visualization
-5. Imitation learning from strong heuristic/search agents
-6. Self-play RL
-7. Neural-guided MCTS
+3. Browser IDE for C++ algorithm development
+4. Human play in the browser UI
+5. Replay export and visualization
+6. Imitation learning from strong heuristic/search agents
+7. Self-play RL
+8. Neural-guided MCTS

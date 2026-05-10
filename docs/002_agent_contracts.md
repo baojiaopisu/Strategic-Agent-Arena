@@ -129,3 +129,20 @@ The repository includes C++ ports of the built-in `RandomAgent` and
 `GreedyExpansionAgent` under `algos/cpp/agents/`. Build them with CMake, then
 enable their manifest entries in `algos/agents.json` when you want the scripts
 or browser UI to use them.
+
+## Browser Development Workflow
+
+The browser development tools should not bypass this contract. Even when the
+website can edit and build C++ source files, Python remains the referee and C++
+agents remain isolated executables that choose legal action indices.
+
+The intended browser IDE workflow is:
+
+1. edit a whitelisted C++ source/header file
+2. save it to the local repo
+3. build a specific CMake target
+4. launch the resulting executable through the external-process adapter
+5. inspect build logs, runtime stderr, selected actions, and match state
+
+The website must not grant arbitrary filesystem writes or arbitrary shell
+execution as part of the agent contract.

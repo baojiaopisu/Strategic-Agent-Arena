@@ -38,6 +38,16 @@ The goal is not to build a huge benchmark. The goal is to build a series of unde
 - Easy cloning for search.
 - Strong tests for core mechanics.
 - Baseline agents before complex learning systems.
+- Local research tooling before hosted infrastructure.
 
 Supply Graph War is the first environment because it combines graph reasoning, territorial expansion, tactical combat, and supply-line vulnerability without requiring expensive simulation.
 
+## Research Lab Interface
+
+The browser UI is part of the lab, not a separate product demo. It should make
+agent behavior easier to understand by connecting the simulator, C++ algorithms,
+batch evaluation, build diagnostics, and eventually replay/training tools in one
+local workflow.
+
+The project should stay local-first while the website can write code and run
+agent binaries. Public or remote deployment requires a separate security design.

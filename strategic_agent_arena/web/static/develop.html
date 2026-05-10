@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Develop | Strategic Agent Arena</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/static/styles.css?v=20260511-split-pages" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="title-block">
+          <span class="eyebrow">Strategic Agent Arena</span>
+          <h1>C++ Algorithm Development</h1>
+          <div id="statusLine" class="status-line">Watching cpp_mcts_v1</div>
+        </div>
+        <nav class="nav-links" aria-label="main navigation">
+          <a href="/play">Play</a>
+          <a href="/analysis">Analysis</a>
+          <a class="active" href="/develop">Develop</a>
+        </nav>
+        <div class="score-strip" aria-label="scoreboard">
+          <div class="score-block player-zero">
+            <span>P0</span>
+            <strong id="score0">0</strong>
+          </div>
+          <div class="score-block player-one">
+            <span>P1</span>
+            <strong id="score1">0</strong>
+          </div>
+        </div>
+      </header>
+
+      <main class="dev-layout">
+        <aside class="panel controls-panel">
+          <section>
+            <h2>Build</h2>
+            <div class="status-card">
+              <span>State</span>
+              <strong id="buildStatus">Checking</strong>
+            </div>
+            <div class="details-grid compact">
+              <div class="detail-row">
+                <span>Source</span>
+                <strong id="sourcePath">-</strong>
+              </div>
+              <div class="detail-row">
+                <span>Executable</span>
+                <strong id="executablePath">-</strong>
+              </div>
+            </div>
+            <button id="buildButton" class="primary-button" type="button">Build Now</button>
+          </section>
+
+          <section>
+            <h2>Debug Match</h2>
+            <label>
+              Opponent
+              <select id="opponentInput"></select>
+            </label>
+            <label>
+              MCTS side
+              <select id="mctsPlayerInput">
+                <option value="0" selected>P0</option>
+                <option value="1">P1</option>
+              </select>
+            </label>
+            <label>
+              Seed
+              <input id="seedInput" type="number" value="7" />
+            </label>
+            <label>
+              Map
+              <select id="mapInput"></select>
+            </label>
+            <label>
+              Max rounds
+              <input id="roundsInput" type="number" min="1" max="500" value="80" />
+            </label>
+            <label>
+              First player
+              <select id="firstPlayerInput">
+                <option value="0" selected>P0</option>
+                <option value="1">P1</option>
+              </select>
+            </label>
+            <div class="button-row">
+              <button id="resetButton" type="button">Start</button>
+              <button id="stepButton" type="button">Step</button>
+              <button id="roundButton" type="button">Round</button>
+              <button id="playButton" type="button">Play</button>
+            </div>
+            <label>
+              Speed
+              <input id="speedInput" type="range" min="120" max="1400" step="40" value="520" />
+            </label>
+            <div id="staleNotice" class="stale-notice" hidden>
+              A newer build exists. Restart the debug match to use it.
+            </div>
+          </section>
+        </aside>
+
+        <section class="board-panel">
+          <div class="board-header" aria-label="map legend">
+            <div class="board-title">
+              <span class="panel-kicker">Debug Map</span>
+              <strong id="boardMapName">No match</strong>
+            </div>
+            <div class="legend-strip">
+              <span><i class="legend-swatch player-zero-swatch"></i>P0</span>
+              <span><i class="legend-swatch player-one-swatch"></i>P1</span>
+              <span><i class="legend-swatch neutral-swatch"></i>Neutral</span>
+              <span><i class="legend-ring"></i>Base</span>
+              <span><i class="legend-warning"></i>Unsupplied</span>
+            </div>
+          </div>
+          <svg id="graphSvg" role="img" aria-label="Supply Graph War debug map"></svg>
+        </section>
+
+        <aside class="panel detail-panel">
+          <section>
+            <h2>Node</h2>
+            <div id="nodeDetails" class="details-empty">Select a city</div>
+          </section>
+          <section>
+            <h2>Legal Actions</h2>
+            <div id="legalActions" class="list-box"></div>
+          </section>
+          <section>
+            <h2>Runtime Diagnostics</h2>
+            <div id="diagnostics" class="diagnostic-grid"></div>
+          </section>
+          <section class="log-section">
+            <h2>Action Log</h2>
+            <div id="actionLog" class="list-box log-box"></div>
+          </section>
+        </aside>
+
+        <section class="panel dev-log-panel">
+          <section>
+            <h2>Build Log</h2>
+            <pre id="buildOutput" class="code-output">Waiting for build status.</pre>
+          </section>
+          <section>
+            <h2>Runtime stderr</h2>
+            <pre id="stderrLog" class="code-output">No stderr output.</pre>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="/static/shared.js?v=20260511-split-pages"></script>
+    <script src="/static/develop.js?v=20260511-split-pages"></script>
+  </body>
+</html>
